@@ -27,7 +27,7 @@ class RayleighChannel:
         h_ideal = np.zeros(len(self.path_delays), dtype=complex)
         
         for i, (delay, gain) in enumerate(zip(self.path_delays, path_gains_lin)):
-            h_complex = (np.random.randn() + 1j * np.random.randn()) * gain / np.sqrt(2)
+            h_complex = (np.random.randn() + 1j * np.random.randn()) / np.sqrt(2) * gain
             h_ideal[i] = h_complex
             delay_samples = int(delay * self.sample_rate)
             if delay_samples < len(signal_in):
@@ -87,11 +87,11 @@ YLong = np.zeros((Nfft, Nsym), dtype=complex)
 HLSLong = np.zeros((Nfft, Nsym), dtype=complex)
 MSE = np.zeros(Nsym)
 SNR = 10
-nose = 0
+noise = 0
 
 for nsym in range(Nsym):
     np.random.seed(nsym+1)
-    Xp = 2*(np.random.rand(Np)>0.5) - 1
+    Xp = 2*(np.random.randn(Np)>0) - 1  # Pilot sequence generation
 
     np.random.seed(nsym+1)
     msgint = np.random.randint(0, 2, Nbps * (Nfft - Np)) # bit generation
@@ -122,11 +122,10 @@ for nsym in range(Nsym):
     h = np.zeros(Nfft, dtype=complex)
     path_delays = np.concatenate([[0], Delay_samples/fs])
     hh_ideal_delay = np.round(path_delays * fs).astype(int)
-    hh_ideal_mean = hh_ideal 
     
     for idx_path in range(len(hh_ideal_delay)):
         if hh_ideal_delay[idx_path] < len(h):
-            h[hh_ideal_delay[idx_path]] = hh_ideal_mean[idx_path]
+            h[hh_ideal_delay[idx_path]] = hh_ideal[idx_path]
     
     sig_pow = np.mean(np.abs(y_channel)**2)
     H = np.fft.fft(h, Nfft)
@@ -135,6 +134,7 @@ for nsym in range(Nsym):
     channel_length = len(h)  # True channel and its time-domain length
     H_power_dB = 10 * np.log10(np.abs(H)**2) # True channel power in dB
     
+    # Noise
     np.random.seed(1)
     yt = awgn(y_channel, SNR, measured='measured')
     
@@ -183,7 +183,7 @@ for nsym in range(Nsym):
     if (nsym + 1) % 500 == 0:
         print(f'Simulated symbols = {nsym + 1}')
 
-BER = nose / (len(msgint) * Nsym)
+BER = noise / (len(msgint) * Nsym)
 
 dataWindow = 14
 labelWindow = 14
