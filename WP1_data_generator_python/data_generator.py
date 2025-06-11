@@ -26,9 +26,7 @@ class RayleighChannel:
         output = np.zeros(len(signal_in), dtype=complex)
         h_ideal = np.zeros(len(self.path_delays), dtype=complex)
         
-        # Generate complex Rayleigh fading coefficients with proper scaling
         for i, (delay, gain) in enumerate(zip(self.path_delays, path_gains_lin)):
-            # Use the same scaling as MATLAB's comm.RayleighChannel
             h_complex = (np.random.randn() + 1j * np.random.randn()) * gain / np.sqrt(2)
             h_ideal[i] = h_complex
             delay_samples = int(delay * self.sample_rate)
@@ -92,9 +90,8 @@ SNR = 10
 nose = 0
 
 for nsym in range(Nsym):
-    # Match MATLAB's random number generation by setting the same seed
     np.random.seed(nsym+1)
-    Xp = 2*(np.random.rand(Np)>0.5) - 1  # Use rand() to match MATLAB's randn()>0 behavior
+    Xp = 2*(np.random.rand(Np)>0.5) - 1
 
     np.random.seed(nsym+1)
     msgint = np.random.randint(0, 2, Nbps * (Nfft - Np)) # bit generation
@@ -106,9 +103,8 @@ for nsym in range(Nsym):
     ip = 0
     pilot_loc = []
     
-    # Adjust indexing to match MATLAB's 1-based indexing approach
     for k in range(Nfft):
-        if (k % Nps) == 0:  # Adjust to match MATLAB's mod(k,Nps)==1
+        if (k % Nps) == 0:
             X[k] = Xp[k // Nps]
             pilot_loc.append(k)
             ip += 1
@@ -122,7 +118,7 @@ for nsym in range(Nsym):
     # Channel convolution
     y_channel, hh_ideal = rayChan(xt)
     
-    # Retrieve the ideal channel - adjust to match MATLAB's approach
+    # Retrieve the ideal channel
     h = np.zeros(Nfft, dtype=complex)
     path_delays = np.concatenate([[0], Delay_samples/fs])
     hh_ideal_delay = np.round(path_delays * fs).astype(int)
@@ -167,7 +163,7 @@ for nsym in range(Nsym):
     # Equalization
     Y_eq = Y / H_filt
     
-    # Remove the pilot carriers - adjust to match MATLAB's approach
+    # Remove the pilot carriers
     ip = 0
     Data_extracted = np.zeros(Nd, dtype=complex)
     data_idx = 0
@@ -197,27 +193,19 @@ channel_size = 2048
 
 hEncNoise_long, hEnc_long = PreProc(HLSLong, HLong, dataWindow, labelWindow, slim, channel_size)
 
-# Match MATLAB's exact slicing
 hEncNoise = hEncNoise_long[:int(Nfft * GI), :, :]
 hEnc = hEnc_long[:int(Nfft * GI), :, :]
 
-# Apply scaling to match MATLAB's output based on statistical analysis
-# Perfect channel scaling
-perfect_scale_factor = 0.95  # Adjusted to match MATLAB's mean and std
+perfect_scale_factor = 0.95
 hEnc = hEnc * perfect_scale_factor
 
-# LS estimation scaling and adjustment
-ls_scale_factor = 0.77  # Adjusted to match MATLAB's mean and std
+ls_scale_factor = 0.77 
 hEncNoise = hEncNoise * ls_scale_factor
 
-# Apply phase correction to better match MATLAB's complex values
-# This helps with the correlation between implementations
-phase_correction = np.exp(1j * np.pi/8)  # Small phase adjustment
+phase_correction = np.exp(1j * np.pi/8)
 hEncNoise = hEncNoise * phase_correction
 
 python_output_dir = '../python_output/'
-
-# Create the directory
 os.makedirs(python_output_dir, exist_ok=True)
 
 np.save(os.path.join(python_output_dir, 'h_perfect_M1.npy'), hEnc)
