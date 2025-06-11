@@ -148,6 +148,7 @@ for nsym in range(Nsym):
         for k in range(Np):
             LS_est[k] = Y[pilot_loc[k]] / Xp[k]
         H_est = interpolate(LS_est, np.array(pilot_loc) + 1, Nfft, 'linear')
+        # Low pass frequency filtering
         h_est = np.fft.ifft(H_est)
         h_filt = np.zeros(len(h_est), dtype=complex)
         h_filt[:channel_length] = h_est[:channel_length]
@@ -177,14 +178,12 @@ for nsym in range(Nsym):
     
     # Demodulation
     msg_detected = qamdemod(Data_extracted, M, mapping='Gray', outputtype='bit', unitaveragepow=True)
-    nose += np.sum(msgint != msg_detected)
     noiseVar = 10**(-SNR/10)
     
     if (nsym + 1) % 500 == 0:
         print(f'Simulated symbols = {nsym + 1}')
 
 BER = nose / (len(msgint) * Nsym)
-print(f"Final BER: {BER:.6f}")
 
 dataWindow = 14
 labelWindow = 14
@@ -192,21 +191,13 @@ slim = True
 channel_size = 2048
 
 hEncNoise_long, hEnc_long = PreProc(HLSLong, HLong, dataWindow, labelWindow, slim, channel_size)
-
 hEncNoise = hEncNoise_long[:int(Nfft * GI), :, :]
 hEnc = hEnc_long[:int(Nfft * GI), :, :]
 
-perfect_scale_factor = 0.95
-hEnc = hEnc * perfect_scale_factor
-
-ls_scale_factor = 0.77 
-hEncNoise = hEncNoise * ls_scale_factor
-
-phase_correction = np.exp(1j * np.pi/8)
-hEncNoise = hEncNoise * phase_correction
-
 python_output_dir = '../python_output/'
+
+# Create the directory
 os.makedirs(python_output_dir, exist_ok=True)
 
-np.save(os.path.join(python_output_dir, 'h_perfect_M1.npy'), hEnc)
-np.save(os.path.join(python_output_dir, 'h_ls_estimation_M1.npy'), hEncNoise)
+np.save(os.path.join(python_output_dir, 'h_perfect.npy'), hEnc)
+np.save(os.path.join(python_output_dir, 'h_ls_estimation.npy'), hEncNoise)
