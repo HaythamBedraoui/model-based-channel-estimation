@@ -34,7 +34,7 @@ fs = 10e6;
 % Loopback channel-------------------------------------------------------
 DopplerShift = 10; 
 
-NUM = 3;
+NUM = 1;
 if NUM == 1
     Delay_samples =     [10,  22];%[25, 50];%
     Attenuation   = [0, -20, -25];
@@ -194,7 +194,7 @@ if ~exist(output_dir, 'dir')
 end
 
 % Save the data
-save(fullfile(output_dir, 'h_perfect_M3.mat'), 'hEnc');
-save(fullfile(output_dir, 'h_ls_estimation_M3.mat'), 'hEncNoise');
+save(fullfile(output_dir, 'h_perfect.mat'), 'hEnc');
+save(fullfile(output_dir, 'h_ls_estimation.mat'), 'hEncNoise');
 
  
