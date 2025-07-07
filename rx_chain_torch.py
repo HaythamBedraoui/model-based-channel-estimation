@@ -2,14 +2,64 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
-def torch_interpolate(H_est, pilot_loc, Nfft, method='linear'):
-    # to ensure inputs are tensors
+def torch_interpolate_trainable(H_est, pilot_loc, Nfft, alpha, beta, gamma, method='linear'):
     if not isinstance(H_est, torch.Tensor):
         H_est = torch.tensor(H_est, dtype=torch.complex64)
     if not isinstance(pilot_loc, torch.Tensor):
         pilot_loc = torch.tensor(pilot_loc, dtype=torch.float32)
     
-    # Convert to 0-based indexing 
+    if torch.min(pilot_loc) == 1:
+        pilot_loc = pilot_loc - 1
+    
+    if pilot_loc[0] > 0:
+        if len(pilot_loc) > 1:
+            slope = (H_est[1] - H_est[0]) / (pilot_loc[1] - pilot_loc[0])
+            
+            H_est = torch.cat([H_est[0:1] - slope * pilot_loc[0:1], H_est])
+            pilot_loc = torch.cat([torch.tensor([0.0], device=pilot_loc.device), pilot_loc])
+        else:
+            H_est = torch.cat([H_est[0:1], H_est])
+            pilot_loc = torch.cat([torch.tensor([0.0], device=pilot_loc.device), pilot_loc])
+    
+    if pilot_loc[-1] < Nfft - 1:
+        if len(pilot_loc) > 1:
+            slope = (H_est[-1] - H_est[-2]) / (pilot_loc[-1] - pilot_loc[-2])
+            H_est = torch.cat([H_est, H_est[-1:] + slope * (Nfft - 1 - pilot_loc[-1:])])
+            pilot_loc = torch.cat([pilot_loc, torch.tensor([float(Nfft - 1)], device=pilot_loc.device)])
+        else:
+            H_est = torch.cat([H_est, H_est[-1:]])
+            pilot_loc = torch.cat([pilot_loc, torch.tensor([float(Nfft - 1)], device=pilot_loc.device)])
+
+    # Interpolate with trainable parameters
+    H_interpolated = torch.zeros(Nfft, dtype=torch.complex64, device=H_est.device)
+    
+    for i in range(Nfft):
+        left_idx = torch.searchsorted(pilot_loc, float(i), right=True) - 1
+        left_idx = torch.clamp(left_idx, 0, len(pilot_loc) - 2)
+        right_idx = left_idx + 1
+        
+        X0 = pilot_loc[left_idx]
+        X1 = pilot_loc[right_idx]
+        Y_beta = H_est[left_idx]   # Left pilot value
+        Y_alpha = H_est[right_idx]  # Right pilot value
+        
+        # Calculate distance factor
+        if X1 - X0 > 0:
+            distance_factor = (i - X0) / (X1 - X0)
+        else:
+            distance_factor = 0.0
+        
+        # Y^i = alpha * Y_alpha + beta * Y_beta + gamma * distance_factor
+        H_interpolated[i] = alpha * Y_alpha + beta * Y_beta + gamma * distance_factor
+    
+    return H_interpolated
+
+def torch_interpolate(H_est, pilot_loc, Nfft, method='linear'):
+    if not isinstance(H_est, torch.Tensor):
+        H_est = torch.tensor(H_est, dtype=torch.complex64)
+    if not isinstance(pilot_loc, torch.Tensor):
+        pilot_loc = torch.tensor(pilot_loc, dtype=torch.float32)
+    
     if torch.min(pilot_loc) == 1:
         pilot_loc = pilot_loc - 1
     
@@ -58,8 +108,7 @@ def torch_qamdemod(symbols, M, mapping='Gray', outputtype='bit', unitaveragepow=
 
         real_part = symbols.real
         imag_part = symbols.imag
-        
-        # Decode bits based on constellation points
+
         bit0 = (real_part < 0).int()
         bit1 = (imag_part < 0).int()
         
@@ -98,12 +147,28 @@ class ChannelEstimator(nn.Module):
         return H_est
 
 class Interpolator(nn.Module):
-    def __init__(self, method='linear'):
+    def __init__(self, method='linear', trainable=True):
         super().__init__()
         self.method = method
+        self.trainable = trainable
+        
+        # Trainable interpolation parameters
+        if self.trainable:
+            self.interp_alpha = nn.Parameter(torch.tensor(0.5), requires_grad=True)
+            self.interp_beta = nn.Parameter(torch.tensor(0.5), requires_grad=True)
+            self.interp_gamma = nn.Parameter(torch.tensor(0.0), requires_grad=True)
     
     def interpolate(self, LS_est, pilot_pos_1based, Nfft):
-        H_est = torch_interpolate(LS_est, pilot_pos_1based, Nfft, self.method)
+        if self.trainable:
+            # Use trainable interpolation
+            H_est = torch_interpolate_trainable(
+                LS_est, pilot_pos_1based, Nfft, 
+                self.interp_alpha, self.interp_beta, self.interp_gamma,
+                self.method
+            )
+        else:
+            # Use non-trainable interpolation
+            H_est = torch_interpolate(LS_est, pilot_pos_1based, Nfft, self.method)
         return H_est
 
 class Equalizer(nn.Module):
@@ -118,7 +183,7 @@ class Equalizer(nn.Module):
         if not isinstance(H_est, torch.Tensor):
             H_est = torch.tensor(H_est, dtype=torch.complex64)
             
-        # Apply equalization with trainable scaling
+        # equalization with trainable scaling
         Y_eq = Y / (H_est * self.eq_scale)
         return Y_eq
 
